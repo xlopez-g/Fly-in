@@ -4,7 +4,7 @@ nb_drones = 0
 hubs = {}
 connection_list = []
 
-with open("map.txt", "r") as entry_file:
+with open("config.txt", "r") as entry_file:
 
     for line in entry_file:
         line = line.strip()

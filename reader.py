@@ -66,18 +66,17 @@ def parser(read_file: str):
             elif line.startswith("connection:"):
                 connection_data = line.split(":", 1)[1].strip()
                 
-                if "[]" in connection_data:
+                if "[" in connection_data:
                     connection_data, extra_info = connection_data.split("[", 1)
-                    extra_info.strip("]").split
+                    extra_info = extra_info.strip("]")
                 else:
-                    extra_info = []
-
-                hub_a, hub_b = connection_data.split("-", 1)            
+                    extra_info = None
+                hub_a, hub_b = connection_data.split("-", 1)
+                hub_b = hub_b.strip()       
                 max_link_capacity = 1
-
-                for item in extra_info:
-                    key, value = item.split("=", 1)
-                    if key == "max_link_capacity":
+                if extra_info:    
+                    if extra_info.startswith("max_link_capacity="):
+                        value = extra_info.split("=", 1)[1]
                         max_link_capacity = int(value)
                     else:
                         raise ValueError(f"Unknown input: {key}")
@@ -112,6 +111,9 @@ def build_graph(hubs, connection_list):
         hub_b = connection["to"]
         capacity = connection["max_link_capacity"]
 
+        #print("hub_a", hub_a)
+        #print("hub_b", hub_b)
+
         cost_a_to_b = get_zone_cost(hubs[hub_b]["zone"])
         cost_b_to_a = get_zone_cost(hubs[hub_a]["zone"])
 
@@ -136,18 +138,55 @@ def dijkstra(graph, start, goal):
     previous = {}
     unvisited = {}
 
+    for key in graph:
+        if key == start:
+            distances[key] = 0
+            unvisited[key] = False
+        else:
+            distances[key]= float("inf")
+            unvisited[key] = True
+
+    print("\n", graph[start], "\n")
+    neighbour_list = []
+    #   print(distances.keys())
+
+    i = 0
+    while (i < 3):
+        distances_list = list(distances.values())
+        print("min", min(distances_list))
+            
+
+        for key in graph[start]:
+            neighbour_list.append(key)
+            cost = graph[start][key]["cost"]
+            if cost < distances[key]:
+                distances[key] = cost
+            previous[key] = start
+
+        i += 1
 
 
+
+    print("initial distances", distances)
+    print("previous", previous)
+    print("unvisited", unvisited)
 
 
 
 
 if __name__ == "__main__":
-    parsing = parser("map.txt")
+    parsing = parser("config.txt")
 
     hubs = parsing[0]
+
+    #print("hubs:", hubs)
+
     connection_list = parsing[1]
+
+    #print("connection list:", connection_list)
 
     graph = build_graph(hubs, connection_list)
 
     print("graph:", graph)
+
+    dijkstra(graph, "hub", "goal")
