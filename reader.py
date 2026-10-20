@@ -2,6 +2,8 @@
 
 from enum import Enum
 
+import sys
+
 class Zone_class(Enum):
     normal = "normal"
     blocked = "blocked"
@@ -134,48 +136,92 @@ def build_graph(hubs, connection_list):
 def dijkstra(graph, start, goal):
     print(graph)
 
+    if goal == start:
+        return (0)
+
     distances = {}
     previous = {}
-    unvisited = {}
-
+    unvisited = []
     for key in graph:
         if key == start:
             distances[key] = 0
-            unvisited[key] = False
+            unvisited.append(key)
         else:
             distances[key]= float("inf")
-            unvisited[key] = True
+            unvisited.append(key)
 
     print("\n", graph[start], "\n")
-    neighbour_list = []
     #   print(distances.keys())
 
     i = 0
-    while (i < 3):
-        distances_list = list(distances.values())
-        print("min", min(distances_list))
-            
 
-        for key in graph[start]:
-            neighbour_list.append(key)
-            cost = graph[start][key]["cost"]
-            if cost < distances[key]:
-                distances[key] = cost
-            previous[key] = start
+    from_node = start
 
-        i += 1
+    while (unvisited != []):
+        unvisited.remove(from_node)
+        print("from", from_node)
+        print("options", graph[from_node])
+
+        for item in graph[from_node]:
+            if distances[item] > distances[from_node] + graph[from_node][item]["cost"]:
+                distances[item] = distances[from_node] + graph[from_node][item]["cost"]
+                previous[item] = from_node
+
+        min_cost_list = []
+        for item in list(distances.keys()):
+            if item in unvisited:
+                min_cost_list.append(distances[item])
+
+        min_cost = min(min_cost_list)
+
+        if min_cost == float("inf"):
+            break
+
+        min_value = None
+
+        for item in list(distances.keys()):
+            if distances[item] == min_cost and item in unvisited:
+                min_value = item
+                break
+
+        #print("min cost", min_cost)
+        #print("Min_value", min_value)
+
+        #distances[min_value] = min_cost + distances[from_node]
+
+        #print("distances", distances)
+        #print("unvisited", unvisited)
+
+        from_node = min_value
+        if from_node == goal:
+            break
 
 
-
-    print("initial distances", distances)
     print("previous", previous)
-    print("unvisited", unvisited)
+
+    if distances[goal] == float("inf"):
+        return(float(inf))
+
+    reverse_path = [goal]
+    point = goal
+
+    while (start not in reverse_path):
+        next_point = previous[point]
+        reverse_path.append(next_point)
+        point = next_point
+
+    path = reverse_path[:: -1]
 
 
+    print("path", path)
+    return(distances[goal])
 
 
 if __name__ == "__main__":
-    parsing = parser("config.txt")
+
+    entry_file = sys.argv[1]
+
+    parsing = parser(entry_file)
 
     hubs = parsing[0]
 
@@ -189,4 +235,11 @@ if __name__ == "__main__":
 
     print("graph:", graph)
 
-    dijkstra(graph, "hub", "goal")
+    for item in hubs:
+        if hubs[item]["type"] == "start_hub":
+            start = item
+        if hubs[item]["type"] == "end_hub":
+            goal = item
+        
+
+    dijkstra(graph, start, goal)
