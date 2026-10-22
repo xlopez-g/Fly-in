@@ -2,6 +2,8 @@
 
 from enum import Enum
 
+from pydantic import BaseModel, Field, ValidationError
+
 import sys
 
 class Zone_class(Enum):
@@ -11,11 +13,55 @@ class Zone_class(Enum):
     priority = "priority"
 
 
+class HUB_TYPE(Enum):
+    start_hub = "start_hub"
+    hub = "hub"
+    end_hub = "end_hub"
+
+
+class Hub(BaseModel):
+    hub_type: HUB_TYPE
+    name: str = Field(min_length=3, max_length=30)
+    x: int = Field(ge=0)
+    y: int = Field(ge=0)
+    zone: Zone_class = Zone_class.normal
+    color: str | None = Field(default=None, min_length=3, max_length=15)
+    max_drones: int = Field(default=1, ge=1)
+
+
+class Connection(BaseModel):
+    hub_a: str = Field(min_length=3, max_length=30)
+    hub_b: str = Field(min_length=3, max_length=30)
+    max_link_capacity: int = Field(default=1, ge=0)
+
+
+class Drone(BaseModel):
+    id: str
+    path: list[str]
+    path_index: int
+    in_transit: bool
+    remaining_turns: int
+
+
+    def propose_move(self):
+        if self.remaining_turns == 0:
+            return None
+        else:
+            return self.path[self.path_index + 1]
+
+    def apply_move(self):
+        self.path_index += 1
+        self.remaining_turns -= 1
+
+
+
 def parser(read_file: str):
 
     nb_drones = 0
     hubs = {}
     connection_list = []
+    hub_list = []
+    connection_class_list = []
 
     with open(read_file, "r") as entry_file:
 
@@ -30,6 +76,14 @@ def parser(read_file: str):
 
             elif line.startswith(("start_hub:", "hub:", "end_hub:")):
                 hub_type, hub_data = line.split(":", 1)
+                if hub_type == "start_hub":
+                    hub_type = HUB_TYPE.start_hub
+                elif hub_type == "hub":
+                    hub_type = HUB_TYPE.hub
+                elif hub_type == "end_hub":
+                    hub_type = HUB_TYPE.end_hub
+
+                                    
                 parts = hub_data.strip().split(None, 3)
 
                 name = parts[0]
@@ -42,8 +96,8 @@ def parser(read_file: str):
 
                 if len(parts) > 3:
                     meta_data = parts[3].strip("[]").split()
-                    for item in meta_data:
-                        key, value = item.split("=", 1)
+                    for node in meta_data:
+                        key, value = node.split("=", 1)
                     
                         if key == "zone":
                             zone = Zone_class(value)
@@ -54,7 +108,15 @@ def parser(read_file: str):
                         else:
                             raise ValueError(f"Unknown data: {key}")
 
-                    
+
+                hub = Hub(hub_type=hub_type,
+                          name=name,
+                          x=x,
+                          y=y,
+                          zone=zone,
+                          color=color,
+                          max_drones=max_drones)
+                hub_list.append(hub)
 
                 hubs[name] = {
                             "type": hub_type,
@@ -87,6 +149,12 @@ def parser(read_file: str):
                                     {"from": hub_a,
                                         "to": hub_b,
                                         "max_link_capacity": max_link_capacity})
+
+                connection_class = Connection(hub_a=hub_a, hub_b=hub_b, max_link_capacity=max_link_capacity)
+                connection_class_list.append(connection_class)
+
+    print("hub list", hub_list)
+    print("connection class list", connection_class_list)
     return(hubs, connection_list)
 
 def get_zone_cost(zone):
@@ -134,7 +202,6 @@ def build_graph(hubs, connection_list):
 
 
 def dijkstra(graph, start, goal):
-    print(graph)
 
     if goal == start:
         return (0)
@@ -143,34 +210,27 @@ def dijkstra(graph, start, goal):
     previous = {}
     unvisited = []
     for key in graph:
+        unvisited.append(key)
         if key == start:
             distances[key] = 0
-            unvisited.append(key)
         else:
             distances[key]= float("inf")
-            unvisited.append(key)
-
-    print("\n", graph[start], "\n")
-    #   print(distances.keys())
-
-    i = 0
 
     from_node = start
 
     while (unvisited != []):
         unvisited.remove(from_node)
-        print("from", from_node)
-        print("options", graph[from_node])
 
-        for item in graph[from_node]:
-            if distances[item] > distances[from_node] + graph[from_node][item]["cost"]:
-                distances[item] = distances[from_node] + graph[from_node][item]["cost"]
-                previous[item] = from_node
+        for node in graph[from_node]:
+            cost_node = graph[from_node][node]["cost"]
+            if distances[node] > distances[from_node] + cost_node:
+                distances[node] = distances[from_node] + cost_node
+                previous[node] = from_node
 
         min_cost_list = []
-        for item in list(distances.keys()):
-            if item in unvisited:
-                min_cost_list.append(distances[item])
+        for node in list(distances.keys()):
+            if node in unvisited:
+                min_cost_list.append(distances[node])
 
         min_cost = min(min_cost_list)
 
@@ -179,28 +239,17 @@ def dijkstra(graph, start, goal):
 
         min_value = None
 
-        for item in list(distances.keys()):
-            if distances[item] == min_cost and item in unvisited:
-                min_value = item
+        for node in list(distances.keys()):
+            if distances[node] == min_cost and node in unvisited:
+                min_value = node
                 break
-
-        #print("min cost", min_cost)
-        #print("Min_value", min_value)
-
-        #distances[min_value] = min_cost + distances[from_node]
-
-        #print("distances", distances)
-        #print("unvisited", unvisited)
 
         from_node = min_value
         if from_node == goal:
             break
 
-
-    print("previous", previous)
-
     if distances[goal] == float("inf"):
-        return(float(inf))
+        return(float("inf"))
 
     reverse_path = [goal]
     point = goal
@@ -212,9 +261,11 @@ def dijkstra(graph, start, goal):
 
     path = reverse_path[:: -1]
 
-
     print("path", path)
+    print("distance total", distances[goal])
     return(distances[goal])
+
+
 
 
 if __name__ == "__main__":
@@ -235,11 +286,13 @@ if __name__ == "__main__":
 
     print("graph:", graph)
 
-    for item in hubs:
-        if hubs[item]["type"] == "start_hub":
-            start = item
-        if hubs[item]["type"] == "end_hub":
-            goal = item
+    for node in hubs:
+        if hubs[node]["type"] == "start_hub":
+            start = node
+        if hubs[node]["type"] == "end_hub":
+            goal = node
         
 
     dijkstra(graph, start, goal)
+    dijkstra(graph, "loop_c", goal)
+
