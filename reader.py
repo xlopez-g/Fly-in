@@ -22,8 +22,8 @@ class HUB_TYPE(Enum):
 class Hub(BaseModel):
     hub_type: HUB_TYPE
     name: str = Field(min_length=3, max_length=30)
-    x: int = Field(ge=0)
-    y: int = Field(ge=0)
+    x: int
+    y: int
     zone: Zone_class = Zone_class.normal
     color: str | None = Field(default=None, min_length=3, max_length=15)
     max_drones: int = Field(default=1, ge=1)
@@ -39,29 +39,34 @@ class Drone(BaseModel):
     id: str
     path: list[str]
     path_index: int
-    in_transit: bool
-    remaining_turns: int
+    in_transit: bool = False
+#    remaining_turns: int
 
 
-    def propose_move(self):
-        if self.remaining_turns == 0:
+    def propose_move(self) -> None | int:
+        if self.path_index == len(self.path) - 1:
             return None
         else:
             return self.path[self.path_index + 1]
 
-    def apply_move(self):
-        self.path_index += 1
-        self.remaining_turns -= 1
+    def apply_move(self) -> None:
+        if self.path_index < len(self.path) - 1:
+            self.path_index += 1
+#           self.remaining_turns -= 1
+
+    def has_arrived(self) -> bool:
+        if self.path_index == len(self.path) - 1:
+            return (True)
+        else:
+            return False
 
 
 
 def parser(read_file: str):
 
     nb_drones = 0
-    hubs = {}
-    connection_list = []
-    hub_list = []
-    connection_class_list = []
+    hubs: dict[str, Hub] = {}
+    connection_list: list[Connection] = []
 
     with open(read_file, "r") as entry_file:
 
@@ -116,16 +121,8 @@ def parser(read_file: str):
                           zone=zone,
                           color=color,
                           max_drones=max_drones)
-                hub_list.append(hub)
 
-                hubs[name] = {
-                            "type": hub_type,
-                            "x": x,
-                            "y": y,
-                            "zone": zone,
-                            "color": color,
-                            "max_drones": max_drones
-                            }
+                hubs[hub.name] = hub
 
             elif line.startswith("connection:"):
                 connection_data = line.split(":", 1)[1].strip()
@@ -143,19 +140,14 @@ def parser(read_file: str):
                         value = extra_info.split("=", 1)[1]
                         max_link_capacity = int(value)
                     else:
-                        raise ValueError(f"Unknown input: {key}")
+                        raise ValueError(f"Unknown input: {extra_info}")
 
-                connection_list.append(
-                                    {"from": hub_a,
-                                        "to": hub_b,
-                                        "max_link_capacity": max_link_capacity})
 
-                connection_class = Connection(hub_a=hub_a, hub_b=hub_b, max_link_capacity=max_link_capacity)
-                connection_class_list.append(connection_class)
+                connection = Connection(hub_a=hub_a, hub_b=hub_b, max_link_capacity=max_link_capacity)
+                connection_list.append(connection)
 
-    print("hub list", hub_list)
-    print("connection class list", connection_class_list)
-    return(hubs, connection_list)
+    #print("\nconnection class list", connection_list)
+    return(nb_drones, hubs, connection_list)
 
 def get_zone_cost(zone):
     cost = None
@@ -177,15 +169,15 @@ def build_graph(hubs, connection_list):
         graph[hub_name] = {}
 
     for connection in connection_list:
-        hub_a = connection["from"]
-        hub_b = connection["to"]
-        capacity = connection["max_link_capacity"]
+        hub_a = connection.hub_a
+        hub_b = connection.hub_b
+        capacity = connection.max_link_capacity
 
         #print("hub_a", hub_a)
         #print("hub_b", hub_b)
 
-        cost_a_to_b = get_zone_cost(hubs[hub_b]["zone"])
-        cost_b_to_a = get_zone_cost(hubs[hub_a]["zone"])
+        cost_a_to_b = get_zone_cost(hubs[hub_b].zone)
+        cost_b_to_a = get_zone_cost(hubs[hub_a].zone)
 
         if cost_a_to_b is not None:
             graph[hub_a][hub_b] = {
@@ -201,10 +193,28 @@ def build_graph(hubs, connection_list):
     return(graph)
 
 
+def create_drones(nb_drones: int, path: list[str]) -> list[Drone]:
+
+    if nb_drones < 1:
+        raise ValueError("Invalid input for drone numbers")
+
+    drone_list = []
+
+    for i in range(0, nb_drones):
+        new_drone = Drone(id=f"Drone{i}",
+                            path=path.copy(),
+                            path_index=0,
+                            in_transit=False)
+                            #remaining_turns=len(path))
+        drone_list.append(new_drone)
+
+    return drone_list
+
+
 def dijkstra(graph, start, goal):
 
     if goal == start:
-        return (0)
+        return ([start], 0)
 
     distances = {}
     previous = {}
@@ -249,7 +259,7 @@ def dijkstra(graph, start, goal):
             break
 
     if distances[goal] == float("inf"):
-        return(float("inf"))
+        return([start], float("inf"))
 
     reverse_path = [goal]
     point = goal
@@ -261,11 +271,61 @@ def dijkstra(graph, start, goal):
 
     path = reverse_path[:: -1]
 
-    print("path", path)
-    print("distance total", distances[goal])
-    return(distances[goal])
+    #print("path", path)
+    #print("distance total", distances[goal])
+    return(path, distances[goal])
 
 
+def all_drones_arrived(drones) -> bool:
+    arrived = True
+    
+    for drone in drones:
+        if drone.path_index != len(drone.path) - 1:
+            arrived = False
+    
+    return(arrived)
+
+
+def simulate(drones, graph):
+    turn = 0
+    connection_usage = {}
+
+    drone = drones[0]
+
+    length = len(drone.path)
+
+    for i in range(length - 2):
+        connection_usage[drone.path[i], drone.path[i + 1]] = 0
+
+    while not all_drones_arrived(drones):
+
+        for i in range(len(drone.path) - 1):
+            connection_usage[drone.path[i], drone.path[i + 1]] = 0
+
+        for drone in drones:
+            if drone.in_transit:
+                drone.in_transit = False
+                connection_usage[(current_hub, next_hub)]
+
+            else:
+                current_hub = drone.path[drone.path_index]
+                next_hub = drone.propose_move()
+                if drone.propose_move() and connection_usage[(current_hub, next_hub)] < graph[current_hub][next_hub]["capacity"]:
+                    drone.apply_move()
+                    connection_usage[current_hub, next_hub] += 1
+                    if graph[current_hub][next_hub]["cost"] == 2:
+                        drone.in_transit = True
+
+        print(f"|||{current_hub} - {next_hub}", graph[current_hub][next_hub]["capacity"])
+        print(f"\nturn {turn}: drones{drones}")
+        print("cccccc", connection_usage)
+        turn += 1
+
+#        propose movements
+#        resolve conflicts
+#        apply allowed movements
+#        update states
+#        show each turn result
 
 
 if __name__ == "__main__":
@@ -274,25 +334,35 @@ if __name__ == "__main__":
 
     parsing = parser(entry_file)
 
-    hubs = parsing[0]
+    nb_drones = parsing[0]
 
-    #print("hubs:", hubs)
+    #print("nb drones", nb_drones)
 
-    connection_list = parsing[1]
+    hubs = parsing[1]
 
-    #print("connection list:", connection_list)
+    print("hubs:", hubs)
+
+    connection_list = parsing[2]
+
+    print("\n\nconnection list:", connection_list)
 
     graph = build_graph(hubs, connection_list)
 
     print("graph:", graph)
 
     for node in hubs:
-        if hubs[node]["type"] == "start_hub":
+        if hubs[node].hub_type == HUB_TYPE.start_hub:
             start = node
-        if hubs[node]["type"] == "end_hub":
+        if hubs[node].hub_type == HUB_TYPE.end_hub:
             goal = node
-        
 
-    dijkstra(graph, start, goal)
-    dijkstra(graph, "loop_c", goal)
 
+    path = dijkstra(graph, start, goal)[0]
+    distance = dijkstra(graph, start, goal)[1]
+    #dijkstra(graph, "maze_a2", goal)
+
+    drones = create_drones(nb_drones, path)
+
+    simulate(drones, graph)
+
+    #print("drone list", drones)
