@@ -302,6 +302,8 @@ def simulate(drones, graph):
         for i in range(len(drone.path) - 1):
             connection_usage[drone.path[i], drone.path[i + 1]] = 0
 
+        i = 1
+
         for drone in drones:
             if drone.in_transit:
                 drone.in_transit = False
@@ -316,11 +318,13 @@ def simulate(drones, graph):
                     if graph[current_hub][next_hub]["cost"] == 2:
                         drone.in_transit = True
 
-        print(f"|||{current_hub} - {next_hub}", graph[current_hub][next_hub]["capacity"])
-        print(f"\nturn {turn}: drones{drones}")
-        print("cccccc", connection_usage)
+            print(f"D{i}-{drone.path[drone.path_index]}", end = " ")
+            i += 1
+        print()
         turn += 1
-
+        #print(f"|||{current_hub} - {next_hub}", graph[current_hub][next_hub]["capacity"])
+        #print(f"\nturn {turn}: drones{drones}")
+        #print("cccccc", connection_usage)
 #        propose movements
 #        resolve conflicts
 #        apply allowed movements
@@ -340,11 +344,11 @@ if __name__ == "__main__":
 
     hubs = parsing[1]
 
-    print("hubs:", hubs)
+    #print("hubs:", hubs)
 
     connection_list = parsing[2]
 
-    print("\n\nconnection list:", connection_list)
+    #print("\n\nconnection list:", connection_list)
 
     graph = build_graph(hubs, connection_list)
 
