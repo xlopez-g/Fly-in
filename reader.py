@@ -307,7 +307,6 @@ def dijkstra(graph, hubs, connection_list, reservation_table, start, goal, max_t
             final_turn = from_node[1]
             break
 
-        #print("unvisited", unvisited)
 
         options_to_check = list(graph[from_node[0]].keys())
         options_to_check.append(from_node[0])
@@ -318,30 +317,32 @@ def dijkstra(graph, hubs, connection_list, reservation_table, start, goal, max_t
                 max_drones = hubs[from_node[0]].max_drones
 
                 if not (reservation_table.is_hub_available(from_node[0], turn + cost_node, max_drones)):
-                    print("not ok")
+                    print("wait not ok")
                     continue
 
             else:
+                #print("frm node", from_node, "to", next_node)
                 cost_node = graph[from_node[0]][next_node]["cost"]
-                max_drones = graph[from_node[0]][next_node]["capacity"]
-            
+                max_drones = hubs[next_node].max_drones
+
                 if not (reservation_table.is_hub_available(next_node, turn + cost_node, max_drones)):
-                    print("not ok")
+                    print(f"from {from_node} {next_node} hub not ok")
                     continue
 
-                max_link_capacity = 0
-                for connection in connection_list:
+                max_link_capacity = graph[from_node[0]][next_node]["capacity"]
+                print(f" {from_node[0]} - {next_node} max link {max_link_capacity}")
+                #for connection in connection_list:
                     #print("hub-a", connection.hub_a)
                     #print("hub-b", connection.hub_b)
                     #print("max", connection.max_link_capacity)
 
-                    if ((connection.hub_a == from_node[0] and connection.hub_b == next_node)
-                        or ((connection.hub_b == from_node[0] and connection.hub_a == next_node))):
-                        max_link_capacity = connection.max_link_capacity
-                        break
+                #    if ((connection.hub_a == from_node[0] and connection.hub_b == next_node)
+                #        or ((connection.hub_b == from_node[0] and connection.hub_a == next_node))):
+                #        max_link_capacity = connection.max_link_capacity
+                #        break
 
                 if not (reservation_table.is_connection_available(from_node[0], next_node, turn + cost_node, max_link_capacity)):
-                    print("ñorñor")
+                    print(f"{from_node[0]} - {next_node} {turn + cost_node} connection not available ")
                     continue
             
             distance_next_node = distances[(next_node, turn + cost_node)]
@@ -439,36 +440,41 @@ if __name__ == "__main__":
     reservation_table = Reservation_Table(hub_occupancy=hub_occupancy,
                                           connection_occupancy=connection_occupancy)
     #eservation_table.hub_occupancy[("roof1", 1)] = 1
-    print("Reservation table", reservation_table)
     #print("start:", start)
-    path, distance = dijkstra(graph, hubs, connection_list, reservation_table, start, goal, 20)
-    for step in path:
-        reservation_table.reserve_hub(step[0], step[1])
-    path2, distance2 = dijkstra(graph, hubs, connection_list, reservation_table, start, goal, 20)
-    for step in path2:
-        reservation_table.reserve_hub(step[0], step[1])
-   
-    path3, distance3 = dijkstra(graph, hubs, connection_list, reservation_table, start, goal, 20)
-    for step in path3:
-        reservation_table.reserve_hub(step[0], step[1])
-    
-    path4, distance4 = dijkstra(graph, hubs, connection_list, reservation_table, start, goal, 20)
-    #distance = dijkstra(graph, start, goal, 20)[1]
-    #dijkstra(graph, "maze_a2", goal)
+    print("Reservation table", reservation_table)
+    drone_list = []
+    for dron_number in range(nb_drones):
+        path, distance = dijkstra(graph, hubs, connection_list, reservation_table, start, goal, 20)
 
+        start_hub, start_turn = path[0]
+        reservation_table.reserve_hub(start_hub, start_turn)
+
+        drone = Drone(id=(f"D{dron_number}"), path=path, path_index=len(path))
+
+        for step in range(len(path) - 1):
+            this_hub = path[step][0]
+            this_turn = path[step][1]
+            next_hub = path[step + 1][0]
+            next_turn = path[step + 1][1]
+             
+            for turn in range(this_turn + 1, next_turn + 1):
+                reservation_table.reserve_hub(next_hub, turn)
+            
+            for turn in range(this_turn + 1, next_turn + 1):
+                reservation_table.reserve_connection(this_hub, next_hub, turn)
+        drone_list.append(drone)
+        print(f"rrr{dron_number}", reservation_table)
+        print(f"\nDron{dron_number}: path",path)
+#        print("reservation table", reservation_table)
+
+    print("\ndrone list", drone_list)
     #drones = create_drones(nb_drones, path)
-
-    print("\npath",path)
-    print("distance", distance)
-    print("\npath2",path2)
-    print("distance2", distance2)
-
-    print("\npath3",path3)
-    print("distance3", distance3)
-    print("\npath4",path4)
-    print("distance4", distance4)
+    '''
+    for dron in range(nb_drones - 1):
+        path, distance = dijkstra(graph, hubs, connection_list, reservation_table, start, goal, 20)
+        print(path)
     #    simulate(drones, graph)
-
+    '''
     #print("drone list", drones)
 
 '''
