@@ -471,16 +471,18 @@ if __name__ == "__main__":
 
     print("drone list", drone_list)
 
-    final_turn = len(drone_list[-1].path)
-    
+    final_turn = drone_list[-1].path[-1][1]
 
-    for turn in range(final_turn - 4):
-        
-        print("gggg", drone.path[turn][1])
+    print("final turn", final_turn, drone_list[-1].path[-1][1])
+
+    for turn in range(0 ,final_turn + 1):
+        print("turn", turn)
         for drone in drone_list:
-            print("dddd", drone.path[turn][1])
-            if  drone.path[turn][1] == turn + 1:
-                print (f"{drone.id} {drone.path[turn]} - {drone.path[turn + 1]}")
+            for time in range(len(drone.path)):
+                if drone.path[time][1] == turn:
+                    if time > 0 and drone.path[time][0] != drone.path[time - 1][0]:
+
+                        print(f"{drone.id}-{drone.path[time][0]}")
         input()
 
 
