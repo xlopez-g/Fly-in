@@ -43,38 +43,6 @@ class Drone(BaseModel):
     path: list[tuple[str, int]]
     path_index: int
 
-    def propose_move(self) -> None | int:
-        if self.path_index == len(self.path) - 1:
-            return None
-        else:
-            return self.path[self.path_index + 1]
-
-    def apply_move(self) -> None:
-        if self.path_index < len(self.path) - 1:
-            self.path_index += 1
-#           self.remaining_turns -= 1
-
-    def has_arrived(self) -> bool:
-        if self.path_index == len(self.path) - 1:
-            return (True)
-        else:
-            return False
-
-
-class Hub_Reservation(BaseModel):
-
-    hub_name: str
-    turn: int
-    drone_number: int
-
-
-class Connection_Reservation(BaseModel):
-
-    from_hub: str
-    to_hub: str
-    turn: int
-    drone_number: int
-
 
 class Reservation_Table(BaseModel):
     #Hub diccionary creation(name, turn): drone number
@@ -83,7 +51,10 @@ class Reservation_Table(BaseModel):
     #Connection dictionary creation (drom_hub. to_hub, turn): dron number
     connection_occupancy: dict[tuple[str, str, int], int] = Field(default_factory=dict)
 
-    def is_hub_available(self, hub_name, turn, max_drones) -> bool:
+    def is_hub_available(self,
+                         hub_name: str,
+                         turn: int,
+                         max_drones: int) -> bool:
         current_drones = self.hub_occupancy.get((hub_name, turn), 0)
 
         if current_drones < max_drones:
@@ -92,14 +63,14 @@ class Reservation_Table(BaseModel):
         return False
 
     def is_connection_available(self,
-                                from_hub,
-                                to_hub,
-                                turn,
-                                max_link_capacity) -> bool:
+                                from_hub: str,
+                                to_hub: str,
+                                turn: int,
+                                max_link_capacity: int) -> bool:
 
         connection_check = (from_hub, to_hub, turn)
         connection_back = (to_hub, from_hub, turn)
-        
+
         current_drones = (self.connection_occupancy.get(connection_check, 0)
                           + self.connection_occupancy.get(connection_back, 0))
 
@@ -108,13 +79,15 @@ class Reservation_Table(BaseModel):
 
         return False
 
-    def reserve_hub(self, hub_name, turn) -> None:
+    def reserve_hub(self, hub_name: str, turn: int) -> None:
+    
         hub_key = (hub_name, turn)
         current_drones = self.hub_occupancy.get(hub_key, 0)
 
         self.hub_occupancy[hub_key] = current_drones + 1
 
-    def reserve_connection(self, from_hub, to_hub, turn) -> None:
+    def reserve_connection(self, from_hub: str, to_hub: str,
+                           turn: int) -> None:
         connection_key = (from_hub, to_hub, turn)
         current_drones = self.connection_occupancy.get(connection_key, 0)
 
@@ -123,111 +96,169 @@ class Reservation_Table(BaseModel):
 
 def parser(read_file: str):
 
-    nb_drones: int = None
+    nb_drones: None | int = None
     hubs: dict[str, Hub] = {}
     connection_list: list[Connection] = []
 
     start_hub_quantity = 0
     end_hub_quantity = 0
+    first_index = 1
 
     with open(read_file, "r") as entry_file:
 
-        for line in entry_file:
-            line = line.strip()
+        for numline in enumerate(entry_file, start=1):
 
-            if not line or line.startswith("#"):
-                continue
+            try:
+                index, line = numline
+                line = line.strip()
 
-            if line.startswith("nb_drones:"):
-                nb_drones = int(line.split(":")[1].strip())
-                if nb_drones == None or nb_drones < 0:
-                    raise ValueError("Invalid nb_drones value,"
-                                     "it must be positive")
+                if not line or line.startswith("#"):
+                    if index == first_index:
+                        first_index += 1
+                    continue
 
-            elif line.startswith(("start_hub:", "hub:", "end_hub:")):
-                max_drones = 1
-
-                hub_type, hub_data = line.split(":", 1)
-                if hub_type == "start_hub":
-                    hub_type = HUB_TYPE.start_hub
-                    max_drones = sys.maxint
-                    start_hub_quantity += 1
-
-                elif hub_type == "hub":
-                    hub_type = HUB_TYPE.hub
-
-                elif hub_type == "end_hub":
-                    hub_type = HUB_TYPE.end_hub
-                    max_drones = sys.maxint
-                    end_hub_quantity += 1
-
-                if start_hub_quantity > 1:
-                    raise ValueError("start hub not unique")
-
-                if end_hub_quantity > 1:
-                    raise ValueError("End hub not unique")
-
-                parts = hub_data.strip().split(None, 3)
-
-                name = parts[0]
-                x = int(parts[1])
-                y = int(parts[2])
-
-                color = None
-                zone = Zone_class.normal
-
-                if len(parts) > 3:
-                    meta_data = parts[3].strip("[]").split()
-                    for node in meta_data:
-                        key, value = node.split("=", 1)
-
-                        if key == "zone":
-                            zone = Zone_class(value)
-                        elif key == "color":
-                            color = value
-                        elif key == "max_drones":
-                            max_drones = int(value)
-                        else:
-                            raise ValueError(f"Unknown data: {key}")
-
-                hub = Hub(hub_type=hub_type,
-                          name=name,
-                          x=x,
-                          y=y,
-                          zone=zone,
-                          color=color,
-                          max_drones=max_drones)
-
-                hubs[hub.name] = hub
-
-            elif line.startswith("connection:"):
-                connection_data = line.split(":", 1)[1].strip()
-
-                if "[" in connection_data:
-                    connection_data, extra_info = connection_data.split("[", 1)
-                    extra_info = extra_info.strip("]")
-                else:
-                    extra_info = None
-                hub_a, hub_b = connection_data.split("-", 1)
-                hub_b = hub_b.strip()
-                max_link_capacity = 1
-                if extra_info:
-                    if extra_info.startswith("max_link_capacity="):
-                        value = extra_info.split("=", 1)[1]
-                        max_link_capacity = int(value)
+                if line.startswith("nb_drones:"):
+                    if index == first_index:
+                        nb_drones = int(line.split(":")[1].strip())
                     else:
-                        raise ValueError(f"Unknown input: {extra_info}")
+                        raise ValueError("nb_drones must be on the first line")
 
-                connection = Connection(hub_a=hub_a,
-                                        hub_b=hub_b,
-                                        max_link_capacity=max_link_capacity)
+                elif line.startswith(("start_hub:", "hub:", "end_hub:")):
+                    max_drones = 1
 
-                connection_list.append(connection)
+                    hub_entry, hub_data = line.split(":", 1)
+                    if hub_entry == "start_hub":
+                        hub_type = HUB_TYPE.start_hub
+                        max_drones = 10000
+                        start_hub_quantity += 1
+
+                    elif hub_entry == "hub":
+                        hub_type = HUB_TYPE.hub
+
+                    elif hub_entry == "end_hub":
+                        hub_type = HUB_TYPE.end_hub
+                        max_drones = 10000
+                        end_hub_quantity += 1
+
+                    parts = hub_data.strip().split(None, 3)
+
+                    name = parts[0]
+                    x = int(parts[1])
+                    y = int(parts[2])
+
+                    color = None
+                    zone = Zone_class.normal
+
+                    if name in list(hubs.keys()):
+                        raise ValueError("Duplicated name of hub")
+
+                    if len(parts) > 3:
+                        meta_data = parts[3].strip("[]").split()
+                        for node in meta_data:
+                            key, value = node.split("=", 1)
+
+                            if key == "zone":
+                                zone = Zone_class(value)
+                            elif key == "color":
+                                color = value
+                            elif (key == "max_drones"):
+                                start_type = HUB_TYPE.start_hub
+                                end_type = HUB_TYPE.end_hub
+                                if not (hub_type == start_type
+                                        or hub_type == end_type):
+                                    max_drones = int(value)
+
+                            else:
+                                raise ValueError(f"Unknown data: {key}")
+
+                    hub = Hub(hub_type=HUB_TYPE,
+                              name=name,
+                              x=x,
+                              y=y,
+                              zone=zone,
+                              color=color,
+                              max_drones=max_drones)
+
+                    hubs[hub.name] = hub
+
+                elif line.startswith("connection:"):
+                    connection_data = line.split(":", 1)[1].strip()
+
+                    if "[" in connection_data:
+                        extra_info = connection_data.split("[", 1)[1]
+                        connection_data = connection_data.split("[", 1)[0]
+                        extra_info = extra_info.strip("]")
+                    else:
+                        extra_info = None
+                    hub_a, hub_b = connection_data.split("-", 1)
+                    hub_b = hub_b.strip()
+                    max_l_cap = 1
+                    if extra_info:
+                        if extra_info.startswith("max_link_capacity="):
+                            value = extra_info.split("=", 1)[1]
+                            max_l_cap = int(value)
+                        else:
+                            raise ValueError(f"Unknown input: {extra_info}")
+
+                    connection = Connection(hub_a=hub_a,
+                                            hub_b=hub_b,
+                                            max_link_capacity=max_l_cap)
+
+                    connection_list.append(connection)
+
+                else:
+                    raise ValueError("Unrecognized syntax"
+                                     f" or command on line {index}: '{line}'")
+
+            except Exception as e:
+                raise ValueError(f"Error on  line {index}: {e}")
+
+    if nb_drones is None:
+        raise ValueError("Number of drones not found")
+
+    if nb_drones <= 0:
+        raise ValueError("Invalid number of drones, "
+                         "it must be a positive integer")
+
+    if start_hub_quantity != 1:
+        raise ValueError("start hub not unique")
+
+    if end_hub_quantity != 1:
+        raise ValueError("End hub not unique")
+
+    hubs_list = list(hubs.keys())
+    len_hubs = len(hubs_list)
+    len_set_hubs = len(set(hubs_list))
+    if len_hubs != len_set_hubs:
+        raise ValueError("Duplicated value on hubs")
+
+#    len_connection = len(connection_list)
+#    len_set_connection = len(set(connection_list))
+#    if len_connection != len_set_connection:
+#        raise ValueError("Duplicated value on zones")
+
+    hub_a_list = []
+    hub_b_list = []
+    hub_a_hub_b_list = []
+
+    for connection in connection_list:
+        hub_a_list.append(connection.hub_a)
+        hub_b_list.append(connection.hub_b)
+        hub_a = connection.hub_a
+        hub_b = connection.hub_b
+        hub_a_hub_b_list.append(tuple(sorted([hub_a, hub_b])))
+        if connection.hub_a not in hubs_list:
+            raise ValueError(f"{connection.hub_a} not in hubs")
+        if connection.hub_b not in hubs_list:
+            raise ValueError(f"{connection.hub_b} not in hubs")
+
+    if len(hub_a_hub_b_list) != len(set(hub_a_hub_b_list)):
+        raise ValueError("Duplicated connections")
 
     return (nb_drones, hubs, connection_list)
 
 
-def get_zone_cost(zone):
+def get_zone_cost(zone) -> int:
     cost = None
     if zone == Zone_class.normal:
         cost = 1
@@ -240,7 +271,7 @@ def get_zone_cost(zone):
     return (cost)
 
 
-def build_graph(hubs, connection_list):
+def build_graph(hubs, connection_list) -> dict[tuple[str, str], (int, int)]:
     graph = {}
 
     for hub_name in hubs:
@@ -393,14 +424,88 @@ def all_drones_arrived(drones) -> bool:
     return (arrived)
 
 
-if __name__ == "__main__":
+def print_drones(drone_list, hubs, connection_list) -> None:
 
-    if sys.argv[1] is None:
-        raise ValueError("missed argument")
+    final_turn = drone_list[-1].path[-1][1]
 
-    entry_file = sys.argv[1]
+    all_step: str = ""
 
-    parsing = parser(entry_file)
+    COLORS = {"RED": "\033[31m", "GREEN": "\033[32m",
+              "YELLOW": "\033[33m", "BLUE": "\033[34m",
+              "GREY": "\033[90m", "RESET": "\033[0m",
+              "PURPLE": "\033[35m", "MAROON": "\033[38;5;52m",
+              "ORANGE": "\033[38;5;208m", "BROWN": "\033[33m",
+              "GOLD": "\033[38;5;220m", "DARKRED": "\033[38;5;88m",
+              "CRIMSON": "\033[38;5;161m", "RAINBOW": "\033[34m"}
+
+    for turn in range(1, final_turn + 2):
+        first_written_drone = True
+        if turn != final_turn + 1:
+            print("turn", turn)
+
+        for drone in drone_list:
+            for step in range(len(drone.path)):
+
+                if drone.path[step][1] == turn:
+                    if (step > 0
+                            and (drone.path[step][0]
+                                 != drone.path[step - 1][0])):
+
+                        phrase = (f"{drone.id}-{drone.path[step][0]}")
+                        if first_written_drone is True:
+                            all_step += phrase
+                            first_written_drone = False
+                            color = hubs[drone.path[step][0]].color
+                            color = color.upper()
+                            if color in COLORS:
+                                print(f"{COLORS[color]}", phrase, f"{COLORS["RESET"]}", end="", sep="")
+                            else:
+                                print(phrase, end="")
+
+                        else:
+                            all_step += " " + phrase
+                            color = hubs[drone.path[step][0]].color
+                            color = color.upper()
+                            if color in COLORS:
+                                print(f"{COLORS[color]}", phrase, f"{COLORS["RESET"]}", end="", sep="")
+                            else:
+                                print(" " + phrase, end="")
+
+                if drone.path[step][1] == turn - 1:
+                    if (step + 1 < len(drone.path) and
+                        (drone.path[step + 1][1] - 1
+                         != drone.path[step][1])):
+
+                        phrase = f"{drone.id}-{drone.path[step][0]}-{drone.path[step + 1][0]}"
+                        if first_written_drone is True:
+                            all_step += phrase
+                            first_written_drone = False
+                            print(phrase, end="")
+                        else:
+                            all_step += " " + phrase
+                            print(" " + phrase, end="")
+
+        if turn < final_turn:
+            all_step += "\n"
+        if turn == final_turn:
+            print()
+        if turn == final_turn + 1:
+            print(all_step)
+        else:
+            try:
+                input()
+            except KeyboardInterrupt:
+                print("Out of the program")
+                break
+
+
+def program(entry_file: str) -> None:
+
+    try:
+        parsing = parser(entry_file)
+    except FileNotFoundError:
+        print("Error: File not found")
+        sys.exit(1)
 
     nb_drones = parsing[0]
 
@@ -423,9 +528,9 @@ if __name__ == "__main__":
             goal = node
 
     hub_occupancy = {}
-    connection_occupancy = {}
+    c_occupancy = {}
     reservation_table = Reservation_Table(hub_occupancy=hub_occupancy,
-                                          connection_occupancy=connection_occupancy)
+                                          connection_occupancy=c_occupancy)
 
     drone_list = []
 
@@ -455,26 +560,22 @@ if __name__ == "__main__":
 
     print("drone list", drone_list)
 
-    final_turn = drone_list[-1].path[-1][1]
+    print_drones(drone_list, hubs, connection_list)
 
-    print("final turn", final_turn, drone_list[-1].path[-1][1])
 
-    for turn in range(0, final_turn + 1):
-        print("turn", turn)
-        for drone in drone_list:
-            for time in range(len(drone.path)):
-                if drone.path[time][1] == turn:
-                    if (time > 0
-                            and (drone.path[time][0]
-                                 != drone.path[time - 1][0])):
+if __name__ == "__main__":
 
-                        print(f"{drone.id}-{drone.path[time][0]}", end=" ")
-        if turn == final_turn:
-            print()
-            break
-        else:
-            try:
-                input()
-            except KeyboardInterrupt:
-                print("Out of the program")
-                break
+    if len(sys.argv) < 2:
+        raise ValueError("missing file argument")
+
+    entry_file = sys.argv[1]
+    try:
+        program(entry_file)
+
+    except ValidationError as e:
+        print(e.errors()[0]["msg"])
+        sys.exit(1)
+
+    except ValueError as e:
+        print("Error:", e)
+        sys.exit(1)
