@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 import sys
 
+
 class Zone_class(Enum):
     normal = "normal"
     blocked = "blocked"
@@ -37,11 +38,8 @@ class Connection(BaseModel):
 
 class Drone(BaseModel):
     id: str
-    path: list[str]
+    path: list[tuple[str, int]]
     path_index: int
-    in_transit: bool = False
-#    remaining_turns: int
-
 
     def propose_move(self) -> None | int:
         if self.path_index == len(self.path) - 1:
@@ -61,6 +59,64 @@ class Drone(BaseModel):
             return False
 
 
+class Hub_Reservation(BaseModel):
+
+    hub_name: str
+    turn: int
+    drone_number: int
+
+
+class Connection_Reservation(BaseModel):
+
+    from_hub: str
+    to_hub: str
+    turn: int
+    drone_number: int
+
+
+class Reservation_Table(BaseModel):
+    #Hub diccionary creation(name, turn): drone number
+    hub_occupancy: dict[tuple[str, int], int] = Field(default_factory=dict)
+
+    #Connection dictionary creation (drom_hub. to_hub, turn): dron number
+    connection_occupancy: dict[tuple[str, str, int], int] = Field(default_factory=dict)
+    
+    def is_hub_available(self, hub_name, turn, max_drones) -> bool:
+        current_drones = self.hub_occupancy.get((hub_name, turn), 0)
+        
+        if current_drones < max_drones:
+            return True
+
+        return False
+
+
+    def is_connection_available(self, from_hub, to_hub, turn, max_link_capacity) -> bool:
+
+        connection_check = (from_hub, to_hub, turn)
+        connection_back = (to_hub, from_hub, turn)
+        
+        current_drones = (self.connection_occupancy.get(connection_check, 0)
+                          + self.connection_occupancy.get(connection_back, 0))
+
+        if (current_drones < max_link_capacity):
+            return True
+
+        return False
+
+
+    def reserve_hub(self, hub_name, turn) -> None:
+        hub_key = (hub_name, turn)
+        current_drones = self.hub_occupancy.get(hub_key, 0)
+
+        self.hub_occupancy[hub_key] = current_drones + 1
+
+
+    def reserve_connection(self, from_hub, to_hub, turn) -> None:
+        connection_key = (from_hub, to_hub, turn)
+        current_drones = self.connection_occupancy.get(connection_key, 0)
+
+        self.connection_occupancy[connection_key] = current_drones + 1
+
 
 def parser(read_file: str):
 
@@ -72,7 +128,7 @@ def parser(read_file: str):
 
         for line in entry_file:
             line = line.strip()
-            
+
             if not line or line.startswith("#"):
                 continue
 
@@ -80,15 +136,18 @@ def parser(read_file: str):
                 nb_drones = int(line.split(":")[1].strip())
 
             elif line.startswith(("start_hub:", "hub:", "end_hub:")):
+                max_drones = 1
+
                 hub_type, hub_data = line.split(":", 1)
                 if hub_type == "start_hub":
                     hub_type = HUB_TYPE.start_hub
+                    max_drones = 10000
                 elif hub_type == "hub":
                     hub_type = HUB_TYPE.hub
                 elif hub_type == "end_hub":
                     hub_type = HUB_TYPE.end_hub
+                    max_drones = 10000
 
-                                    
                 parts = hub_data.strip().split(None, 3)
 
                 name = parts[0]
@@ -97,13 +156,12 @@ def parser(read_file: str):
 
                 color = None
                 zone = Zone_class.normal
-                max_drones = 1
 
                 if len(parts) > 3:
                     meta_data = parts[3].strip("[]").split()
                     for node in meta_data:
                         key, value = node.split("=", 1)
-                    
+
                         if key == "zone":
                             zone = Zone_class(value)
                         elif key == "color":
@@ -112,7 +170,6 @@ def parser(read_file: str):
                             max_drones = int(value)
                         else:
                             raise ValueError(f"Unknown data: {key}")
-
 
                 hub = Hub(hub_type=hub_type,
                           name=name,
@@ -126,28 +183,31 @@ def parser(read_file: str):
 
             elif line.startswith("connection:"):
                 connection_data = line.split(":", 1)[1].strip()
-                
+
                 if "[" in connection_data:
                     connection_data, extra_info = connection_data.split("[", 1)
                     extra_info = extra_info.strip("]")
                 else:
                     extra_info = None
                 hub_a, hub_b = connection_data.split("-", 1)
-                hub_b = hub_b.strip()       
+                hub_b = hub_b.strip()
                 max_link_capacity = 1
-                if extra_info:    
+                if extra_info:
                     if extra_info.startswith("max_link_capacity="):
                         value = extra_info.split("=", 1)[1]
                         max_link_capacity = int(value)
                     else:
                         raise ValueError(f"Unknown input: {extra_info}")
 
+                connection = Connection(hub_a=hub_a,
+                                        hub_b=hub_b,
+                                        max_link_capacity=max_link_capacity)
 
-                connection = Connection(hub_a=hub_a, hub_b=hub_b, max_link_capacity=max_link_capacity)
                 connection_list.append(connection)
 
     #print("\nconnection class list", connection_list)
-    return(nb_drones, hubs, connection_list)
+    return (nb_drones, hubs, connection_list)
+
 
 def get_zone_cost(zone):
     cost = None
@@ -184,16 +244,16 @@ def build_graph(hubs, connection_list):
                 "cost": cost_a_to_b,
                 "capacity": capacity
             }
-        
+
         if cost_b_to_a is not None:
             graph[hub_b][hub_a] = {
                 "cost": cost_b_to_a,
                 "capacity": capacity
             }
-    return(graph)
+    return (graph)
 
 
-def create_drones(nb_drones: int, path: list[str]) -> list[Drone]:
+def create_drones(nb_drones: int, path: list[tuple[str, int]]) -> list[Drone]:
 
     if nb_drones < 1:
         raise ValueError("Invalid input for drone numbers")
@@ -201,70 +261,128 @@ def create_drones(nb_drones: int, path: list[str]) -> list[Drone]:
     drone_list = []
 
     for i in range(0, nb_drones):
-        new_drone = Drone(id=f"Drone{i}",
-                            path=path.copy(),
-                            path_index=0,
-                            in_transit=False)
-                            #remaining_turns=len(path))
+        new_drone = Drone(id=f"D{i + 1}",
+                          path=path.copy(),
+                          path_index=0)
         drone_list.append(new_drone)
 
     return drone_list
 
 
-def dijkstra(graph, start, goal):
+def dijkstra(graph, hubs, connection_list, reservation_table, start, goal):
+
+    hub_occupancy = reservation_table.hub_occupancy
+    connection_occupancy = reservation_table.connection_occupancy
 
     if goal == start:
         return ([start], 0)
 
+    queue_list = [(start, 0)]
+
     distances = {}
     previous = {}
-    unvisited = []
-    for key in graph:
-        unvisited.append(key)
-        if key == start:
-            distances[key] = 0
-        else:
-            distances[key]= float("inf")
+    unvisited = set()
 
-    from_node = start
+    #turn = 0
+    #for turn in range(max_turn):
+     #   for key in graph:
+      #      unvisited.append((key, turn))
+    #    distances[(key, turn)] = float("inf")
+    distances[(start, 0)] = 0
 
-    while (unvisited != []):
+    from_node = (start, 0)
+    unvisited.add((start, 0))
+    
+    #print("from node", from_node)
+
+    final_turn = None
+
+    while (unvisited):
+        turn = from_node[1]
         unvisited.remove(from_node)
 
-        for node in graph[from_node]:
-            cost_node = graph[from_node][node]["cost"]
-            if distances[node] > distances[from_node] + cost_node:
-                distances[node] = distances[from_node] + cost_node
-                previous[node] = from_node
-
-        min_cost_list = []
-        for node in list(distances.keys()):
-            if node in unvisited:
-                min_cost_list.append(distances[node])
-
-        min_cost = min(min_cost_list)
-
-        if min_cost == float("inf"):
+        if from_node[0] == (goal):
+            final_turn = from_node[1]
             break
 
-        min_value = None
 
-        for node in list(distances.keys()):
-            if distances[node] == min_cost and node in unvisited:
-                min_value = node
-                break
+        options_to_check = list(graph[from_node[0]].keys())
+        options_to_check.append(from_node[0])
 
-        from_node = min_value
-        if from_node == goal:
+        for next_node in options_to_check:
+            if next_node == from_node[0]:
+                cost_node = 1
+                max_drones = hubs[from_node[0]].max_drones
+
+                if not (reservation_table.is_hub_available(from_node[0], turn + cost_node, max_drones)):
+                    #print("wait not ok")
+                    continue
+
+            else:
+                #print("frm node", from_node, "to", next_node)
+                cost_node = graph[from_node[0]][next_node]["cost"]
+                max_drones = hubs[next_node].max_drones
+                #print(f"{next_node} maxdrones {max_drones}")
+                
+                if not (reservation_table.is_hub_available(next_node, turn + cost_node, max_drones)):
+                    #print(f"from {from_node} {next_node} hub not ok")
+                    continue
+
+                max_link_capacity = graph[from_node[0]][next_node]["capacity"]
+                #print(f" {from_node[0]} - {next_node} max link {max_link_capacity}")
+                #for connection in connection_list:
+                    #print("hub-a", connection.hub_a)
+                    #print("hub-b", connection.hub_b)
+                    #print("max", connection.max_link_capacity)
+
+                #    if ((connection.hub_a == from_node[0] and connection.hub_b == next_node)
+                #        or ((connection.hub_b == from_node[0] and connection.hub_a == next_node))):
+                #        max_link_capacity = connection.max_link_capacity
+                #        break
+                if not (reservation_table.is_connection_available(from_node[0], next_node, turn + cost_node, max_link_capacity)):
+                    #print(f"{from_node[0]} - {next_node} {turn + cost_node} connection not available ")
+                    continue
+                if (cost_node == 2 and
+                    not (reservation_table.is_connection_available(from_node[0], next_node, turn + cost_node - 1, max_link_capacity))):
+                    #print(f"{from_node[0]} - {next_node} {turn + cost_node} connection not available ")
+                    continue
+                    
+            distance_next_node = distances.get((next_node, turn + cost_node), float("inf"))
+            new_posible_distance = distances[from_node] + cost_node
+            #print("cost node", cost_node)
+            if (distance_next_node > new_posible_distance):
+                distances[(next_node, turn + cost_node)] = new_posible_distance
+                previous[(next_node, turn + cost_node)] = from_node
+                unvisited.add((next_node, turn + cost_node))
+        #min_cost_list = []
+        min_cost = float("inf")
+        current_state = None
+        #print("distances", distances)
+
+        min_tuple_list = list(distances.keys())
+        
+        for (node, turn_i) in min_tuple_list:
+            #print("ffff", (node, turn_i), "---", distances[(node, turn_i)])
+            if (node, turn_i) in unvisited and distances[(node, turn_i)] < min_cost:
+                min_cost = distances[(node, turn_i)]
+                current_state = (node, turn_i)
+
+        #print("mincost list", current_state)
+
+        if current_state is None or min_cost == float("inf"):
             break
 
-    if distances[goal] == float("inf"):
-        return([start], float("inf"))
+        from_node = current_state
+        #print("from node", from_node)
 
-    reverse_path = [goal]
-    point = goal
 
-    while (start not in reverse_path):
+    if final_turn is None:
+        return ([start], float("inf"))
+
+    reverse_path = [(goal, final_turn)]
+    point = (goal, final_turn)
+
+    while ((start, 0) not in reverse_path):
         next_point = previous[point]
         reverse_path.append(next_point)
         point = next_point
@@ -273,66 +391,25 @@ def dijkstra(graph, start, goal):
 
     #print("path", path)
     #print("distance total", distances[goal])
-    return(path, distances[goal])
+    return (path, distances[(goal, final_turn)])
 
 
 def all_drones_arrived(drones) -> bool:
     arrived = True
-    
+
     for drone in drones:
         if drone.path_index != len(drone.path) - 1:
             arrived = False
-    
-    return(arrived)
+
+    return (arrived)
 
 
-def simulate(drones, graph):
-    turn = 0
-    connection_usage = {}
-
-    drone = drones[0]
-
-    length = len(drone.path)
-
-    for i in range(length - 2):
-        connection_usage[drone.path[i], drone.path[i + 1]] = 0
-
-    while not all_drones_arrived(drones):
-
-        for i in range(len(drone.path) - 1):
-            connection_usage[drone.path[i], drone.path[i + 1]] = 0
-
-        i = 1
-
-        for drone in drones:
-            if drone.in_transit:
-                drone.in_transit = False
-                connection_usage[(current_hub, next_hub)]
-
-            else:
-                current_hub = drone.path[drone.path_index]
-                next_hub = drone.propose_move()
-                if drone.propose_move() and connection_usage[(current_hub, next_hub)] < graph[current_hub][next_hub]["capacity"]:
-                    drone.apply_move()
-                    connection_usage[current_hub, next_hub] += 1
-                    if graph[current_hub][next_hub]["cost"] == 2:
-                        drone.in_transit = True
-
-            print(f"D{i}-{drone.path[drone.path_index]}", end = " ")
-            i += 1
-        print()
-        turn += 1
-        #print(f"|||{current_hub} - {next_hub}", graph[current_hub][next_hub]["capacity"])
-        #print(f"\nturn {turn}: drones{drones}")
-        #print("cccccc", connection_usage)
-#        propose movements
-#        resolve conflicts
-#        apply allowed movements
-#        update states
-#        show each turn result
 
 
 if __name__ == "__main__":
+
+    if sys.argv[1] is None:
+        raise ValueError("missed argument")
 
     entry_file = sys.argv[1]
 
@@ -344,11 +421,11 @@ if __name__ == "__main__":
 
     hubs = parsing[1]
 
-    #print("hubs:", hubs)
+    print("hubs:", hubs)
 
     connection_list = parsing[2]
 
-    #print("\n\nconnection list:", connection_list)
+    print("\n\nconnection list:", connection_list)
 
     graph = build_graph(hubs, connection_list)
 
@@ -360,13 +437,117 @@ if __name__ == "__main__":
         if hubs[node].hub_type == HUB_TYPE.end_hub:
             goal = node
 
+    hub_occupancy = {}
+    connection_occupancy = {}
+    reservation_table = Reservation_Table(hub_occupancy=hub_occupancy,
+                                          connection_occupancy=connection_occupancy)
 
-    path = dijkstra(graph, start, goal)[0]
-    distance = dijkstra(graph, start, goal)[1]
-    #dijkstra(graph, "maze_a2", goal)
+    #eservation_table.hub_occupancy[("roof1", 1)] = 1
+    #print("start:", start)
+    drone_list = []
 
-    drones = create_drones(nb_drones, path)
+    for drone_number in range(nb_drones):
+        path, distance = dijkstra(graph, hubs, connection_list, reservation_table, start, goal)
 
-    simulate(drones, graph)
+        start_hub, start_turn = path[0]
+        reservation_table.reserve_hub(start_hub, start_turn)
 
+        drone = Drone(id=(f"D{drone_number}"), path=path, path_index=0)
+
+        for step in range(len(path) - 1):
+            this_hub = path[step][0]
+            this_turn = path[step][1]
+            next_hub = path[step + 1][0]
+            next_turn = path[step + 1][1]
+             
+            reservation_table.reserve_hub(next_hub, next_turn)
+
+            if this_hub != next_hub:
+                for turn in range(this_turn + 1, next_turn + 1):
+                    reservation_table.reserve_connection(
+                        this_hub, next_hub, turn)
+        drone_list.append(drone)
+#        print("reservation table", reservation_table)
+
+    print("drone list", drone_list)
+
+    final_turn = drone_list[-1].path[-1][1]
+
+    print("final turn", final_turn, drone_list[-1].path[-1][1])
+
+    for turn in range(0 ,final_turn + 1):
+        print("turn", turn)
+        for drone in drone_list:
+            for time in range(len(drone.path)):
+                if drone.path[time][1] == turn:
+                    if time > 0 and drone.path[time][0] != drone.path[time - 1][0]:
+
+                        print(f"{drone.id}-{drone.path[time][0]}")
+        input()
+
+
+
+
+    #drones = create_drones(nb_drones, path)
+    '''
+    for dron in range(nb_drones - 1):
+        path, distance = dijkstra(graph, hubs, connection_list, reservation_table, start, goal, 20)
+        print(path)
+    #    simulate(drones, graph)
+    '''
     #print("drone list", drones)
+
+'''
+def simulate(drones, graph):
+    turn = 0
+    connection_usage = {}
+
+    drone = drones[0]
+
+    length = len(drone.path)
+
+    for i in range(length - 2):
+        connection_usage[(drone.path[i][0], drone.path[i + 1][0])] = 0
+
+    while not all_drones_arrived(drones):
+
+        for i in range(len(drone.path) - 1):
+            connection_usage[(drone.path[i], drone.path[i + 1])] = 0
+
+        for drone in drones:
+            if drone.in_transit:
+                drone.in_transit = False
+                current_hub = drone.path[drone.path_index]
+                next_hub = drone.path[drone.path_index + 1]
+                connection_usage[(current_hub, next_hub)] += 1
+
+            else:
+                current_hub = drone.path[drone.path_index][0]
+                print("current hub", current_hub)
+                next_hub = drone.propose_move()[0]
+                print("next hub", next_hub)
+
+                print("gggggg", connection_usage.get(current_hub, next_hub), 0)
+                if (drone.propose_move()
+                    and (connection_usage.get((current_hub, next_hub), 0)
+                    < graph[current_hub][next_hub]["capacity"])):
+                    
+                    drone.apply_move()
+                    connection_usage[(current_hub, next_hub)] = connection_usage.get((current_hub, next_hub), 0) + 1
+                    print(f"{drone.id}-{drone.path[drone.path_index]}",
+                          end=" ")
+
+                    if graph[current_hub][next_hub]["cost"] == 2:
+                        drone.in_transit = True
+
+        print()
+        turn += 1
+        #print(f"|||{current_hub} - {next_hub}", graph[current_hub][next_hub]["capacity"])
+        #print(f"\nturn {turn}: drones{drones}")
+        #print("cccccc", connection_usage)
+#        propose movements
+#        resolve conflicts
+#        apply allowed movements
+#        update states
+#        show each turn result
+'''
