@@ -2,34 +2,23 @@
 
 import sys
 
-from models import HUB_TYPE, Hub, Drone, Reservation_Table
+from models import HUB_TYPE, Hub, Drone, Reservation_Table, Connection
 
 from parser import parser
 
 from graph import build_graph
 
-from dijkstra import dijkstra
+from create_drones import create_Drones
 
 from print_drones import print_drones
 
 from pydantic import ValidationError
 
 
-def program(entry_file: str) -> None:
+def start_end_hub(hubs: dict[str, Hub]) -> tuple[Hub, Hub]:
 
-    try:
-        parsing = parser(entry_file)
-    except FileNotFoundError:
-        print("Error: File not found")
-        sys.exit(1)
-
-    nb_drones = parsing[0]
-
-    hubs = parsing[1]
-
-    connection_list = parsing[2]
-
-    graph = build_graph(hubs, connection_list)
+    start = None
+    goal = None
 
     for node in hubs:
         if hubs[node].hub_type == HUB_TYPE.start_hub:
@@ -37,35 +26,29 @@ def program(entry_file: str) -> None:
         if hubs[node].hub_type == HUB_TYPE.end_hub:
             goal = hubs[node]
 
-    hub_load: dict[tuple[Hub, int], int] = {}
-    c_occupancy: dict[tuple[Hub, Hub, int], int] = {}
-    reservation_table = Reservation_Table(hub_load=hub_load,
-                                          conn_load=c_occupancy)
+    if start is None or goal is None:
+        raise ValueError("Start or end hub not found")
 
-    drone_list = []
+    return (start, goal)
 
-    for drone_number in range(nb_drones):
-        path, distance = dijkstra(graph, hubs, connection_list,
-                                  reservation_table, start, goal)
 
-        start_hub, start_turn = path[0]
-        reservation_table.reserve_hub(start_hub, start_turn)
+def fly_in(entry_file: str) -> None:
 
-        drone = Drone(id=(f"D{drone_number + 1}"), path=path, path_index=0)
+    try:
+        parsing_data = parser(entry_file)
 
-        for step in range(len(path) - 1):
-            this_hub = path[step][0]
-            this_turn = path[step][1]
-            next_hub = path[step + 1][0]
-            next_turn = path[step + 1][1]
+    except FileNotFoundError:
+        print("Error: File not found")
+        sys.exit(1)
 
-            reservation_table.reserve_hub(next_hub, next_turn)
+    nb_drones, hubs, connection_list = parsing_data
 
-            if this_hub != next_hub:
-                for turn in range(this_turn + 1, next_turn + 1):
-                    reservation_table.reserve_connection(
-                        this_hub, next_hub, turn)
-        drone_list.append(drone)
+    graph = build_graph(hubs, connection_list)
+
+    start, goal = start_end_hub(hubs)
+
+    drone_list = create_Drones(nb_drones,
+                               graph, hubs, connection_list, start, goal)
 
     print_drones(drone_list, hubs, connection_list)
 
@@ -77,7 +60,7 @@ if __name__ == "__main__":
 
     entry_file = sys.argv[1]
     try:
-        program(entry_file)
+        fly_in(entry_file)
 
     except ValidationError as e:
         print(e.errors()[0]["msg"])
