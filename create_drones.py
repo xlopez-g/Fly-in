@@ -1,17 +1,38 @@
 #!/usr/bin/env python3
+"""Drone creation and path reservation module for Fly-in.
+
+Iteratively computes paths for all drones using time-expanded Dijkstra
+and reserves spatial-temporal resources in the reservation table.
+"""
 
 from models import Hub, Drone, Reservation_Table, Connection
 
 from dijkstra import dijkstra
 
 
-def create_Drones(nb_drones: int,
+def create_drones(nb_drones: int,
                   graph: dict[Hub, dict[Hub, dict[str, int]]],
-                  hubs: dict[str, "Hub"],
-                  connection_list: list["Connection"],
+                  hubs: dict[str, Hub],
+                  connection_list: list[Connection],
                   start: Hub,
                   goal: Hub
                   ) -> list[Drone]:
+    """Instantiate drones and reserve their calculated paths turn by turn.
+
+    Args:
+        nb_drones: Total number of drones to route.
+        graph: Network adjacency graph with movement costs and link capacities.
+        hubs: Dictionary mapping hub names to Hub entities.
+        connection_list: List of all connections in the map.
+        start: Starting Hub instance.
+        goal: Target Hub instance.
+
+    Returns:
+        List of configured Drone instances with assigned time-indexed paths.
+
+    Raises:
+        ValueError: If a drone cannot find a valid path to the goal.
+    """
 
     hub_load: dict[tuple[Hub, int], int] = {}
     c_occupancy: dict[tuple[Hub, Hub, int], int] = {}
@@ -24,6 +45,9 @@ def create_Drones(nb_drones: int,
     for drone_number in range(nb_drones):
         path, distance = dijkstra(graph, hubs, connection_list,
                                   reservation_table, start, goal)
+
+        if not path or path[-1][0] != goal:
+            raise ValueError(f"Path not found for drone D{drone_number +1}")
 
         start_hub, start_turn = path[0]
         reservation_table.reserve_hub(start_hub, start_turn)

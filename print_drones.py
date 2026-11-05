@@ -1,11 +1,23 @@
 #!/usr/bin/env python3
+"""Simulation output formatter module for Fly-in.
+
+Formats and prints turn-by-turn drone movements to the standard output
+following the project specifications, with support for ANSI color rendering.
+"""
 
 from models import Hub, Connection, Drone
 
 
 def print_drones(drone_list: list[Drone],
-                 hubs: dict[str, "Hub"],
+                 hubs: dict[str, Hub],
                  connection_list: list[Connection]) -> None:
+    """Print the turn-by-turn movements of all drones in the simulation.
+
+    Args:
+        drone_list: List of active drones containing assigned paths.
+        hubs: Map of hub names to Hub objects.
+        connection_list: List of parsed Connection objects.
+    """
 
     final_turn = drone_list[-1].path[-1][1]
 
@@ -43,7 +55,7 @@ def print_drones(drone_list: list[Drone],
                             if color in COLORS:
                                 print(f"{COLORS[color]}",
                                       phrase,
-                                      f"{COLORS["RESET"]}",
+                                      f"{COLORS['RESET']}",
                                       end="", sep="")
 
                             else:
@@ -56,7 +68,7 @@ def print_drones(drone_list: list[Drone],
                                 color = color.upper()
                             if color in COLORS:
                                 print(f"{COLORS[color]} {phrase}"
-                                      f"{COLORS["RESET"]}",
+                                      f"{COLORS['RESET']}",
                                       end="", sep="")
 
                             else:

@@ -1,18 +1,37 @@
 #!/usr/bin/env python3
+"""Time-expanded Dijkstra pathfinding algorithm for Fly-in.
+
+Calculates optimal time-indexed paths for drones over a dynamic network graph,
+accounting for zone costs, priority weightings, waiting actions, and capacity
+constraints across future turns.
+"""
 
 from models import Hub, Connection, Zone_class, Reservation_Table
 
 
 def dijkstra(graph: dict[Hub, dict[Hub, dict[str, int]]],
-             hubs: dict[str, "Hub"],
-             connection_list: list["Connection"],
+             hubs: dict[str, Hub],
+             connection_list: list[Connection],
              reservation_table: Reservation_Table,
              start: Hub,
              goal: Hub) -> tuple[list[tuple[Hub, int]], int | float]:
+    """Find the shortest conflict-free path from start to goal over time.
+
+    Args:
+        graph: Adjacency dictionary mapping Hub connections, costs, and link caps.
+        hubs: Map of hub name to Hub instances.
+        connection_list: List of parsed Connection objects.
+        reservation_table: Time-expanded occupancy and connection capacity tracker.
+        start: Starting Hub object.
+        goal: Target Hub object.
+
+    Returns:
+        A tuple containing (list_of_hub_turn_tuples, total_path_cost).
+    """
 
     distances: dict[tuple[Hub, int], int | float] = {}
-    previous = {}
-    unvisited = set()
+    previous: dict[tuple[Hub, int], tuple[Hub, int]] = {}
+    unvisited: set[tuple[Hub, int]] = set()
 
     from_node = (start, 0)
 
@@ -42,7 +61,7 @@ def dijkstra(graph: dict[Hub, dict[Hub, dict[str, int]]],
         for next_node in options_to_check:
 
             if next_node == from_hub:
-                cost_node = 0.99
+                cost_node = 0.999
                 max_drones = from_hub.max_drones
 
                 total_cost = turn + round(cost_node)
@@ -57,7 +76,9 @@ def dijkstra(graph: dict[Hub, dict[Hub, dict[str, int]]],
                     cost_node = 0.99
                 else:
                     cost_node = graph[from_hub][next_node]["cost"]
+
                 max_drones = next_node.max_drones
+                total_cost = turn + round(cost_node)
 
                 if not (reservation_table.is_hub_available(next_node,
                                                            total_cost,
@@ -86,7 +107,7 @@ def dijkstra(graph: dict[Hub, dict[Hub, dict[str, int]]],
                                                 round(turn + cost_node)),
                                                float("inf"))
 
-            new_posible_distance = distances[from_node] + cost_node
+            new_posible_distance = float(distances[from_node]) + cost_node
 
             if (distance_next_node > new_posible_distance):
                 cost_node = round(cost_node)
@@ -121,6 +142,6 @@ def dijkstra(graph: dict[Hub, dict[Hub, dict[str, int]]],
         reverse_path.append(next_point)
         point = next_point
 
-    path = reverse_path[:: -1]
+    path = reverse_path[::-1]
 
     return (path, distances[(goal, final_turn)])

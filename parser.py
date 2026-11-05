@@ -1,9 +1,26 @@
 #!/usr/bin/env python3
+"""Map parser module for the Fly-in drone routing simulation.
+
+Reads map text files, validates syntax, parses metadata (zone types, colors,
+capacities), and builds structured entities while ensuring strict error handling.
+"""
 
 from models import HUB_TYPE, Zone_class, Hub, Connection
 
 
-def parser(file_path: str) -> tuple[int, dict[str, "Hub"], list["Connection"]]:
+def parser(file_path: str) -> tuple[int, dict[str, Hub], list[Connection]]:
+    """Parse a map file and validate all network and drone constraints.
+
+    Args:
+        file_path: Path to the input map text file.
+
+    Returns:
+        A tuple containing (nb_drones, hubs_dict, connections_list).
+
+    Raises:
+        ValueError: On any syntax error, unknown metadata, invalid capacity,
+            missing or non-unique start/end hubs, or duplicated connections.
+    """
 
     nb_drones: None | int = None
     hubs: dict[str, Hub] = {}
@@ -11,7 +28,7 @@ def parser(file_path: str) -> tuple[int, dict[str, "Hub"], list["Connection"]]:
 
     start_hub_quantity = 0
     end_hub_quantity = 0
-    first_index = 1
+    first_line = 1
 
     with open(file_path, "r") as entry_file:
 
@@ -22,12 +39,10 @@ def parser(file_path: str) -> tuple[int, dict[str, "Hub"], list["Connection"]]:
                 line = line.strip()
 
                 if not line or line.startswith("#"):
-                    if index == first_index:
-                        first_index += 1
                     continue
 
                 if line.startswith("nb_drones:"):
-                    if index == first_index:
+                    if index == first_line:
                         nb_drones = int(line.split(":")[1].strip())
                     else:
                         raise ValueError("nb_drones must be on the first line")
@@ -38,7 +53,7 @@ def parser(file_path: str) -> tuple[int, dict[str, "Hub"], list["Connection"]]:
                     hub_type_entry, hub_data = line.split(":", 1)
                     if hub_type_entry == "start_hub":
                         hub_type = HUB_TYPE.start_hub
-                        max_drones = 10000
+                        max_drones = 999999
                         start_hub_quantity += 1
 
                     elif hub_type_entry == "hub":
@@ -46,7 +61,7 @@ def parser(file_path: str) -> tuple[int, dict[str, "Hub"], list["Connection"]]:
 
                     elif hub_type_entry == "end_hub":
                         hub_type = HUB_TYPE.end_hub
-                        max_drones = 10000
+                        max_drones = 999999
                         end_hub_quantity += 1
 
                     parts = hub_data.strip().split(None, 3)
@@ -146,9 +161,9 @@ def parser(file_path: str) -> tuple[int, dict[str, "Hub"], list["Connection"]]:
 #    if len_connection != len_set_connection:
 #        raise ValueError("Duplicated value on zones")
 
-    hub_a_list = []
-    hub_b_list = []
-    hub_a_hub_b_list = []
+    hub_a_list: list[str] = []
+    hub_b_list: list[str]= []
+    hub_a_hub_b_list: list[tuple[str, str]] = []
 
     for connection in connection_list:
         hub_a_list.append(connection.hub_a)
