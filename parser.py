@@ -11,6 +11,19 @@ from models import HUB_TYPE, Zone_class, Hub, Connection
 
 def validate_connections(connection_list: list[Connection],
                          hubs: dict[str, Hub]) -> None:
+    """Validate connections between hubs.
+
+    Checks that all referenced hubs exist and that no connection is duplicated.
+    Connections are considered duplicated regardless of their direction.
+
+    Args:
+        connection_list: List of connections to validate.
+        hubs: Dictionary containing all available hubs.
+
+    Raises:
+        ValueError: If a connection references a non-existent hub or if
+            duplicated connections are found.
+    """
 
     hubs_list = list(hubs.keys())
     hub_a_hub_b_list: list[tuple[str, str]] = []
@@ -34,6 +47,20 @@ def validate_connections(connection_list: list[Connection],
 def parse_hub(hubs: dict[str, Hub],
               hub_type_entry: str,
               hub_data: str) -> None:
+    """Parse hub information and add the resulting hub to the network.
+
+    Extracts the hub type, name, coordinates and optional metadata such as
+    zone, color and maximum drone capacity.
+
+    Args:
+        hubs: Dictionary where the parsed hub will be stored.
+        hub_type_entry: Type of hub (start_hub, hub or end_hub).
+        hub_data: String containing the hub name, coordinates and metadata.
+
+    Raises:
+        ValueError: If the hub name is duplicated, metadata is invalid,
+            or the hub data cannot be parsed.
+    """
 
     max_drones = 1
 
@@ -97,6 +124,18 @@ def parse_hub(hubs: dict[str, Hub],
 
 def parse_connection(connection_list: list[Connection],
                      connection_data: str) -> None:
+    """Parse connection information and append it to the connection list.
+
+    Extracts the two connected hubs and the optional maximum link capacity.
+
+    Args:
+        connection_list: List where the parsed connection will be stored.
+        connection_data: String containing the connected hub names and
+            optional connection metadata.
+
+    Raises:
+        ValueError: If the connection data or its metadata is invalid.
+    """
 
     if "[" in connection_data:
         extra_info = connection_data.split("[", 1)[1]
