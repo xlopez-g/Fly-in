@@ -47,7 +47,7 @@ def create_drones(nb_drones: int,
                                   reservation_table, start, goal)
 
         if not path or path[-1][0] != goal:
-            raise ValueError(f"Path not found for drone D{drone_number +1}")
+            raise ValueError(f"Path not found for drone D{drone_number + 1}")
 
         start_hub, start_turn = path[0]
         reservation_table.reserve_hub(start_hub, start_turn)

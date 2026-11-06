@@ -61,7 +61,7 @@ def fly_in(entry_file: str) -> None:
     except FileNotFoundError:
         print(f"Error: File {entry_file} not found")
         sys.exit(1)
-    except OSerror as e:
+    except OSError as e:
         print(f"Error while reading {entry_file}", e)
         sys.exit(1)
 
@@ -79,23 +79,28 @@ def fly_in(entry_file: str) -> None:
 
 if __name__ == "__main__":
 
-    if len(sys.argv) < 2:
-        print("missing file argument")
-        print("Usage: make run MAP=<path_to_map>")
-        sys.exit(1)
-
-    entry_file = sys.argv[1]
     try:
+        if len(sys.argv) < 2:
+            print("missing file argument")
+            print("Usage: make run MAP=<path_to_map>")
+            sys.exit(1)
+
+        entry_file = sys.argv[1]
+
         fly_in(entry_file)
 
-    except ValidationError as e:
-        print("Validation Error", e.errors()[0]["msg"])
-        sys.exit(1)
+    except KeyboardInterrupt as e:
+        print("\nProgram interrupterd by user", e)
+        sys.exit(130)
 
     except ValueError as e:
         print("Error:", e)
         sys.exit(1)
 
-    except exception as e:
+    except ValidationError as e:
+        print("Validation Error", e.errors()[0]["msg"])
+        sys.exit(1)
+
+    except Exception as e:
         print("Unexpected Error", e)
         sys.exit(1)

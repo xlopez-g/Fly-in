@@ -17,8 +17,10 @@ def get_zone_cost(zone: Zone_class) -> None | int:
         zone: Zone classification of the destination hub.
 
     Returns:
-        Integer cost in simulation turns (1 for normal/priority, 2 for restricted),
-        or None if the zone is blocked (inaccessible).
+        Integer cost in simulation turns:
+            1 turn for normal/priority
+            2 turns for restricted
+            None if the zone is blocked (inaccessible).
     """
 
     cost = None
@@ -33,8 +35,6 @@ def get_zone_cost(zone: Zone_class) -> None | int:
     return (cost)
 
 
-
-
 def build_graph(hubs: dict[str, Hub],
                 connection_list: list[Connection]) -> GraphType:
     """Build a directed adjacency graph from network hubs and connections.
@@ -47,7 +47,7 @@ def build_graph(hubs: dict[str, Hub],
         connection_list: List of parsed Connection instances.
 
     Returns:
-        A nested dictionary mapping origin Hub -> destination Hub -> metadata dict
+        A dictionary mapping origin Hub -> destination Hub -> metadata dict
         containing 'cost' and 'capacity'.
     """
 

@@ -18,10 +18,11 @@ def dijkstra(graph: dict[Hub, dict[Hub, dict[str, int]]],
     """Find the shortest conflict-free path from start to goal over time.
 
     Args:
-        graph: Adjacency dictionary mapping Hub connections, costs, and link caps.
+        graph: Adjacency dictionary mapping Hub connections, costs,
+               and link caps.
         hubs: Map of hub name to Hub instances.
         connection_list: List of parsed Connection objects.
-        reservation_table: Time-expanded occupancy and connection capacity tracker.
+        reservation_table: Hub occupancy and connection capacity tracker.
         start: Starting Hub object.
         goal: Target Hub object.
 
