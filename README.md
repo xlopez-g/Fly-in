@@ -109,7 +109,7 @@ D1-goal D2-goal
 ## Resources
 
 ### References & Documentation
-- [Python Typing Documentation (`typing` module)](https://docs.python.org/3/library/typing.html)
+
 - [Pydantic V2 Models & Validation](https://docs.pydantic.dev/latest/)
 - [PEP 257 – Docstring Conventions](https://peps.python.org/pep-0257/)
 - [Time-Expanded Graphs for Multi-Agent Pathfinding (MAPF)](https://en.wikipedia.org/wiki/Multi-agent_path_finding)
