@@ -47,6 +47,8 @@ Set up the virtual environment (`.venv`) and install dependencies (`pydantic`, `
 make install
 ```
 
+An example map file (`example.txt`) is provided at the root of the repository to let you quickly test and experiment with the simulation rules (zone costs, link capacities, and hub limits).
+
 ### Execution
 Run the default simulation:
 ```bash

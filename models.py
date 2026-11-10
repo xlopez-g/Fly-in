@@ -154,8 +154,10 @@ class Reservation_Table(BaseModel):
         connection_check = (from_hub, to_hub, turn)
         connection_back = (to_hub, from_hub, turn)
 
-        current_drones = (self.conn_load.get(connection_check, 0)
-                          + self.conn_load.get(connection_back, 0))
+        drones_check = self.conn_load.get(connection_check, 0)
+        drones_back = self.conn_load.get(connection_back, 0)
+
+        current_drones = drones_check + drones_back
 
         if (current_drones < max_link_capacity):
             return True
